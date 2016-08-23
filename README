@@ -1,0 +1,9 @@
+VSP2 Driver Sample Test Program
+=====
+
+Dependencies:
+-------------
+
+*vsp2driver
+*media-ctl
+*mmngr
