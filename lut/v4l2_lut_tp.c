@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Renesas Electronics Corporation
+ * Copyright (c) 2016-2017 Renesas Electronics Corporation
  * Released under the MIT license
  * http://opensource.org/licenses/mit-license.php
  */
@@ -31,10 +31,10 @@
 /* device name */
 #ifndef USE_M3
 /* for h3 */
-#define MEDIA_DEV_NAME		"/dev/media2"		/* fe9a0000.vsp */
+#define MEDIA_DEV_NAME		"/dev/media3"		/* fe9a0000.vsp */
 #else
 /* for m3 */
-#define MEDIA_DEV_NAME		"/dev/media1"		/* fe9a0000.vsp */
+#define MEDIA_DEV_NAME		"/dev/media2"		/* fe9a0000.vsp */
 #endif
 
 #define SRC_INPUT_DEV		"%s rpf.0 input"
