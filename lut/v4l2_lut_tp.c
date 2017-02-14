@@ -20,7 +20,6 @@
 
 #include <mediactl/mediactl.h>
 #include <mediactl/v4l2subdev.h>
-#include <libmediactl-v4l2/mediactl-priv.h>
 
 #include "mmngr_user_public.h"
 #include "mmngr_buf_user_public.h"
@@ -1805,55 +1804,70 @@ static int call_media_ctl(struct media_device **ppmedia,
 static int set_lut(struct media_device *pmedia, void *plut_table,
 		   char *pentity_base, const char *pmedia_name)
 {
-	struct vsp2_lut_config	config;
+	struct vsp2_lut_config	lut_par;
 	char			entity_name[32];
+	const char		*psubdevname;
 	struct media_entity	*pentity;
 	unsigned int		*pdata;
 	unsigned int		lut_addr;
+	int			lut_fd = -1;
 	unsigned char		r, g, b;
 	unsigned char		sub;
 
 	int	i   = 0;
 	int	ret = -1;
 
-	memset(&config, 0, sizeof(config));
+	memset(&lut_par, 0, sizeof(lut_par));
 
 	pdata = (unsigned int *)plut_table;
-
-	/* Set lut table */
-	lut_addr = 0x00007000;
-
-	/* Negative */
-	r = 0xff;
-	g = 0xff;
-	b = 0xff;
-	sub = 0x01;
-
-	for (i = 0; i < 256; i++) {
-		*pdata = lut_addr;
-		pdata++;
-		*pdata = r << 16 | g << 8 | b;
-		pdata++;
-
-		r -= sub;
-		g -= sub;
-		b -= sub;
-		lut_addr += 4;
-	}
-
-	/* Create config param */
-	config.addr	= plut_table;
-	config.tbl_num	= 256;
-	config.fxa	= 0x80;
 
 	/* Set config */
 	snprintf(entity_name, sizeof(entity_name), pentity_base, pmedia_name);
 	pentity = media_get_entity_by_name(pmedia, entity_name,
-		strlen(entity_name));
+		                           strlen(entity_name));
+	if (pentity == NULL) {
+		printf("Error media_get_entity_by_name(%s)\n", entity_name);
+		return -1;
+	}
+	psubdevname = media_entity_get_devname(pentity);
 
-	if (pentity != NULL)
-		if (ioctl(pentity->fd, VIDIOC_VSP2_LUT_CONFIG, &config) == 0)
-			ret = 0;
+	if (psubdevname == NULL) {
+		printf("Error media_entity_get_devname(%s)\n", entity_name);
+		return -1;
+	}
+	lut_fd = open(psubdevname, O_RDWR);
+
+	if (lut_fd != -1) {
+		/* Set lut table */
+		lut_addr = 0x00007000;
+
+		/* Negative */
+		r = 0xff;
+		g = 0xff;
+		b = 0xff;
+		sub = 0x01;
+
+		for (i = 0; i < 256; i++) {
+			*pdata = lut_addr;
+			pdata++;
+			*pdata = r << 16 | g << 8 | b;
+			pdata++;
+
+			r -= sub;
+			g -= sub;
+			b -= sub;
+			lut_addr += 4;
+		}
+
+		/* Create config param */
+		lut_par.addr	= plut_table;
+		lut_par.tbl_num	= 256;
+		lut_par.fxa	= 0x80;
+
+		if (ioctl(lut_fd, VIDIOC_VSP2_LUT_CONFIG, &lut_par) == 0)
+			ret = 0; /* success !! */
+		close(lut_fd);
+	}
 
 	return ret;
 }

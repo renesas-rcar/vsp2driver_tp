@@ -92,7 +92,7 @@ static int	test_hgo_dmabuf(void);
 static int	read_file(unsigned char *, unsigned int, const char *);
 static int	write_file(unsigned char *, unsigned int, const char *);
 static int	call_media_ctl(struct media_device **, const char **);
-static bool	set_hgo(struct media_device *pmedia, void *pvirt_addr,
+static int	set_hgo(struct media_device *pmedia, void *pvirt_addr,
 			char *pentity_base, const char *pmedia_name);
 static void	print_histogram(unsigned long addr, unsigned long data_len);
 static int	open_video_device(struct media_device *pmedia,
@@ -262,7 +262,7 @@ static int test_hgo_mmap(void)
 	/*  Make histogram - VIDIOC_VSP2_HGO_CONFIG                           */
 	/*--------------------------------------------------------------------*/
 	ret = set_hgo(pmedia, (void *)mmngr_hgo_virt, HGO_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -753,7 +753,7 @@ static int test_hgo_userptr(void)
 	/*  Make histogram - VIDIOC_VSP2_HGO_CONFIG                           */
 	/*--------------------------------------------------------------------*/
 	ret = set_hgo(pmedia, (void *)mmngr_hgo_virt, HGO_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -1229,7 +1229,7 @@ static int test_hgo_dmabuf(void)
 	/*  Make histogram - VIDIOC_VSP2_HGO_CONFIG                           */
 	/*--------------------------------------------------------------------*/
 	ret = set_hgo(pmedia, (void *)mmngr_hgo_virt, HGO_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -1817,27 +1817,31 @@ static int call_media_ctl(struct media_device **ppmedia,
 	return 0;
 }
 
-static bool set_hgo(struct media_device *pmedia, void *pvirt_addr,
+static int set_hgo(struct media_device *pmedia, void *pvirt_addr,
 		    char *pentity_base, const char *pmedia_name)
 {
-	bool ret = false;
-
+	struct vsp2_hgo_config	hgo_par;
 	char			entity_name[32];
 	const char		*pdevname;
 	struct media_entity	*pentity;
-
-	struct vsp2_hgo_config	hgo_par;
 	int			hgo_fd = -1;
 
+	int ret = -1;
+
+	/* Set config */
 	snprintf(entity_name, sizeof(entity_name), pentity_base, pmedia_name);
 	pentity = media_get_entity_by_name(pmedia, entity_name,
 					   strlen(entity_name));
-	if (!pentity) {
+	if (pentity == NULL) {
 		printf("Error media_get_entity(%s)\n", entity_name);
 		return -1;
 	}
 	pdevname = media_entity_get_devname(pentity);
 
+	if (pdevname == NULL) {
+		printf("Error media_entity_get_devname(%s)\n", entity_name);
+		return -1;
+	}
 	hgo_fd = open(pdevname, O_RDWR);
 
 	if (hgo_fd != -1) {
@@ -1854,12 +1858,11 @@ static bool set_hgo(struct media_device *pmedia, void *pvirt_addr,
 		hgo_par.step_mode	= 0x00;
 		hgo_par.sampling	= 0;	/* VSP_SMPPT_SRC1 */
 
-		if (ioctl(hgo_fd, VIDIOC_VSP2_HGO_CONFIG, &hgo_par) != -1) {
-			/* success !! */
-			ret = true;
-		}
+		if (ioctl(hgo_fd, VIDIOC_VSP2_HGO_CONFIG, &hgo_par) != -1)
+			ret = 0; /* success !! */
 		close(hgo_fd);
 	}
+
 	return ret;
 }
 

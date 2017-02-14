@@ -20,7 +20,6 @@
 
 #include <mediactl/mediactl.h>
 #include <mediactl/v4l2subdev.h>
-#include <libmediactl-v4l2/mediactl-priv.h>
 
 #include "mmngr_user_public.h"
 #include "mmngr_buf_user_public.h"
@@ -89,7 +88,7 @@ static int	test_clu_dmabuf(void);
 static int	read_file(unsigned char*, unsigned int, const char*);
 static int	write_file(unsigned char*, unsigned int, const char*);
 static int	call_media_ctl(struct media_device **, const char **);
-static bool	set_clu(struct media_device *pmedia, unsigned long virt_addr,
+static int	set_clu(struct media_device *pmedia, unsigned long virt_addr,
 			char *pentity_base, const char *pmedia_name);
 static int	open_video_device(struct media_device *pmedia,
 				  char *pentity_base, const char *pmedia_name);
@@ -258,7 +257,7 @@ static int test_clu_mmap(void)
 	/*  Make cubic lookup table - VIDIOC_VSP2_CLU_CONFIG                 */
 	/*-------------------------------------------------------------------*/
 	ret = set_clu(pmedia, mmngr_clu_virt, CLU_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -744,7 +743,7 @@ static int test_clu_userptr(void)
 	/*  Make cubic lookup table - VIDIOC_VSP2_CLU_CONFIG                 */
 	/*-------------------------------------------------------------------*/
 	ret = set_clu(pmedia, mmngr_clu_virt, CLU_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -1215,7 +1214,7 @@ static int test_clu_dmabuf(void)
 	/*  Make cubic lookup table - VIDIOC_VSP2_CLU_CONFIG                 */
 	/*-------------------------------------------------------------------*/
 	ret = set_clu(pmedia, mmngr_clu_virt, CLU_DEV, pmedia_name);
-	if (ret == false) {
+	if (ret != 0) {
 		printf("error line=%d errno=(%d)\n", __LINE__, errno);
 		return -1;
 	}
@@ -1842,60 +1841,77 @@ static int call_media_ctl(struct media_device **ppmedia,
 	return 0;
 }
 
-static bool set_clu(struct media_device *pmedia, unsigned long virt_addr,
+static int set_clu(struct media_device *pmedia, unsigned long virt_addr,
 		    char *pentity_base, const char *pmedia_name)
 {
-	struct vsp2_clu_config	config;
+	struct vsp2_clu_config	clu_par;
 	char			entity_name[32];
+	const char		*psubdevname;
 	struct media_entity	*pentity;
 	unsigned int		data;
 	unsigned int		*pclu_addr;
-
-	bool ret = false;
+	int			clu_fd = -1;
 
 	int		ir, ig, ib;
 	unsigned char	r, g, b;
+	int		ret = -1;
 
 	unsigned char tbl[17] = {0, 16, 32, 48, 64, 80, 96, 112, 128,
 				 144, 160, 176, 192, 208, 224, 240, 255};
 
 	pclu_addr = (unsigned int *)virt_addr;
 
-	/* Set clu table */
-	for (ib = 0; ib < B_MAX; ib++) {
-		b = tbl[16-ib];
-
-		for (ig = 0; ig < G_MAX; ig++) {
-			g = tbl[16-ig];
-
-			for (ir = 0; ir < R_MAX; ir++) {
-				r = tbl[16-ir];
-
-				*pclu_addr = 0x00007404;
-				pclu_addr++;
-
-				data = r << 16 | g << 8 | b;
-				*pclu_addr = data;
-				pclu_addr++;
-			}
-		}
-	}
-
-	/* Create config param */
-	memset(&config, 0, sizeof(config));
-
-	config.mode	= 0x80;		/* VSP_CLU_MODE_3D_AUTO */
-	config.addr	= (void *)virt_addr;
-	config.tbl_num	= CLU_MAX_ELEMENT;
-
 	/* Set config */
 	snprintf(entity_name, sizeof(entity_name), pentity_base, pmedia_name);
 	pentity = media_get_entity_by_name(pmedia, entity_name,
-		strlen(entity_name));
+		                           strlen(entity_name));
+	if (pentity == NULL) {
+		printf("Error media_get_entity_by_name(%s)\n", entity_name);
+		return -1;
+	}
+	psubdevname = media_entity_get_devname(pentity);
 
-	if (pentity != NULL)
-		if (ioctl(pentity->fd, VIDIOC_VSP2_CLU_CONFIG, &config) == 0)
-			ret = true; /* success !! */
+	if (psubdevname == NULL) {
+		printf("Error media_entity_get_devname(%s)\n", entity_name);
+		return -1;
+	}
+	clu_fd = open(psubdevname, O_RDWR);
+
+	/* setting config & exec */
+	if (clu_fd != -1) {
+		/* Create config param */
+		memset(&clu_par, 0, sizeof(clu_par));
+
+		clu_par.mode	= 0x80;		/* VSP_CLU_MODE_3D_AUTO */
+		clu_par.addr	= (void *)virt_addr;
+		clu_par.tbl_num	= CLU_MAX_ELEMENT;
+
+		/* Set clu table */
+		for (ib = 0; ib < B_MAX; ib++) {
+			b = tbl[16-ib];
+
+			for (ig = 0; ig < G_MAX; ig++) {
+				g = tbl[16-ig];
+
+				for (ir = 0; ir < R_MAX; ir++) {
+					r = tbl[16-ir];
+
+					*pclu_addr = 0x00007404;
+					pclu_addr++;
+
+					data = r << 16 | g << 8 | b;
+					*pclu_addr = data;
+					pclu_addr++;
+				}
+			}
+		}
+
+		if (ioctl(clu_fd, VIDIOC_VSP2_CLU_CONFIG, &clu_par) == 0)
+			ret = 0; /* success !! */
+		close(clu_fd);
+	}
+
+
 	return ret;
 }
 
